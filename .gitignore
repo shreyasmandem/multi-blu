@@ -1,0 +1,9 @@
+# build output
+build/
+dist/
+*.spec
+
+# python
+__pycache__/
+*.py[cod]
+.venv/
