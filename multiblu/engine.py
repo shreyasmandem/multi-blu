@@ -172,6 +172,7 @@ class Listener:
     wants_growth: bool = False
     error: str = ""
     _last: np.ndarray = field(default=None, repr=False)
+    _played_gain: float = field(default=None, repr=False)
 
     @property
     def target(self) -> int:
@@ -218,8 +219,13 @@ class Listener:
             ramp = np.minimum(self.fade + self.fade_step * np.arange(1, frames + 1), 1.0)
             self.fade = float(ramp[-1])
             data = data * ramp[:, None].astype(np.float32)
-        if self.gain != 1.0:
-            data = data * np.float32(self.gain)
+        gain = self.gain
+        was = gain if self._played_gain is None else self._played_gain
+        if gain != was:                 # glide across the block, so a drag never zippers
+            data = data * np.linspace(was, gain, frames, dtype=np.float32)[:, None]
+        elif gain != 1.0:
+            data = data * np.float32(gain)
+        self._played_gain = gain
 
         self._last = data[-1:].copy()
         return data
@@ -244,6 +250,7 @@ class Engine:
         self._lock = threading.RLock()
         self._last_growth = 0.0
         self.delays: dict = {}          # device key -> seconds of extra delay
+        self.volumes: dict = {}         # device key -> slider level, 0 to 1
         self.src_channels = 2
         self.src_rate = 48000
         self.source_name = ""
@@ -399,6 +406,7 @@ class Engine:
         for key, listener in self._listeners.items():
             listener.align = max(0, int((slowest - listener.latency) * listener.rate))
             listener.user_delay = max(0, int(self.delays.get(key, 0.0) * listener.rate))
+            listener.gain = self.volumes.get(key, 1.0) ** 2
             listener.ring.write(
                 np.zeros((listener.target, listener.channels), np.float32))
 
@@ -485,6 +493,21 @@ class Engine:
             listener.ring.write(np.zeros((change, listener.channels), np.float32))
         elif change < 0:
             listener.ring.discard(-change)
+
+    def set_volume(self, key: str, level: float) -> None:
+        """Set one listener's level, 0 to 1, while it plays.
+
+        This scales the listener's own copy of the audio. The Windows device
+        volume is no use for this: a device that claims hardware volume is left to
+        apply it itself, and virtual cables and many Bluetooth sets simply do not.
+        Hearing is logarithmic, so the level is squared: halfway is -12 dB, which
+        sounds about half as loud.
+        """
+        level = max(0.0, min(1.0, level))
+        self.volumes[key] = level
+        listener = self._listeners.get(key)
+        if listener is not None:
+            listener.gain = level ** 2
 
     def stop(self) -> None:
         with self._lock:

@@ -250,7 +250,7 @@ class DeviceRow(tk.Frame):
 
     def _volume(self, value: float) -> None:
         self.percent.configure(text="%d%%" % round(value * 100))
-        ep.set_volume(self.device.id, value)
+        self.app.set_volume(self.device.id, value)
 
     def _delay(self, value: float) -> None:
         seconds = value * MAX_DELAY
@@ -260,10 +260,9 @@ class DeviceRow(tk.Frame):
     def show_selected(self, selected: bool, animate: bool = True) -> None:
         self.toggle.set(selected, animate=animate)
         if selected:
-            level = ep.get_volume(self.device.id)
-            if level is not None:
-                self.slider.set(level)
-                self.percent.configure(text="%d%%" % round(level * 100))
+            level = self.app.volumes.get(self.device.id, 1.0)
+            self.slider.set(level)
+            self.percent.configure(text="%d%%" % round(level * 100))
             seconds = self.app.delays.get(self.device.id, 0.0)
             self.sync.set(seconds / MAX_DELAY)
             self.sync_value.configure(text="%d ms" % round(seconds * 1000))
@@ -371,6 +370,7 @@ class App(tk.Tk):
         self.source = None
         self.selected: set = set()
         self.delays: dict = {}
+        self.volumes: dict = {}
         self.rows: dict = {}
         self._signature = None
         self._report = None
@@ -518,6 +518,12 @@ class App(tk.Tk):
         self.engine.set_delay(device_id, seconds)
         self._save_settings()
 
+    def set_volume(self, device_id: str, level: float) -> None:
+        """Change one device's own level; takes effect immediately, no restart."""
+        self.volumes[device_id] = level
+        self.engine.set_volume(device_id, level)
+        self._save_settings()
+
     def _apply(self) -> None:
         if self.source is None:
             self.status.configure(text="No output device to share.", fg=DIM)
@@ -525,6 +531,7 @@ class App(tk.Tk):
         by_id = {d.id: d.name for d in self.devices}
         listeners = [(i, by_id[i]) for i in sorted(self.selected) if i in by_id]
         self.engine.delays = dict(self.delays)
+        self.engine.volumes = dict(self.volumes)
         self.worker.request(self.source.name, listeners)
         if listeners:
             self.status.configure(text="Connecting...", fg=DIM)
@@ -631,8 +638,9 @@ class App(tk.Tk):
             saved = json.loads(SETTINGS.read_text(encoding="utf-8-sig"))
             self.selected = set(saved.get("selected", []))
             self.delays = {k: float(v) for k, v in saved.get("delays", {}).items()}
+            self.volumes = {k: float(v) for k, v in saved.get("volumes", {}).items()}
         except Exception:
-            self.selected, self.delays = set(), {}
+            self.selected, self.delays, self.volumes = set(), {}, {}
 
     def _save_settings(self) -> None:
         try:
@@ -640,7 +648,9 @@ class App(tk.Tk):
             SETTINGS.write_text(
                 json.dumps({"selected": sorted(self.selected),
                             "delays": {k: round(v, 4)
-                                       for k, v in self.delays.items() if v}}),
+                                       for k, v in self.delays.items() if v},
+                            "volumes": {k: round(v, 4)
+                                        for k, v in self.volumes.items()}}),
                 encoding="utf-8")
         except Exception:
             pass
