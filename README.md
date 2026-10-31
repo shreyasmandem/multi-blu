@@ -46,6 +46,9 @@ off and it stops. Your choices and volumes are remembered for next time.
   playing to — the same mechanism screen recorders use to capture desktop audio.
 - That audio is copied into a ring buffer per extra device and rendered out to
   all of them simultaneously.
+- Each device's **volume** scales its own copy of the audio. It does not touch
+  the Windows device volume, which Bluetooth headsets and virtual cables can
+  ignore. 100% means as loud as that device's Windows volume allows.
 - **Nothing about your audio setup is changed.** No default device is switched,
   no device is muted, no system setting is written. If the app is closed or
   killed, there is nothing to restore.
@@ -94,9 +97,8 @@ Windows-specific:
 - **WASAPI loopback** to capture what another device is playing. macOS has no
   equivalent without a kernel extension (BlackHole, Loopback); Linux uses
   PulseAudio/PipeWire monitor sources, a completely different API.
-- **Windows Core Audio (IMMDevice, IAudioEndpointVolume, IPolicyConfig)** to
-  enumerate endpoints, read and set per-device volume, and switch the default
-  output device.
+- **Windows Core Audio (IMMDevice, IPolicyConfig)** to enumerate endpoints and
+  switch the default output device.
 
 On phones this is not possible at all — Android and iOS do not let an app
 capture another app's audio or drive several Bluetooth sinks. Android 13+ has
@@ -126,8 +128,8 @@ python -m PyInstaller --noconfirm --onefile --windowed --name "Multi-Blu" --icon
 
 ## Layout
 
-    multiblu/endpoints.py   Core Audio: device list, default device, per-device volume
-    multiblu/engine.py      loopback capture, ring buffers, drift, alignment, fan-out
+    multiblu/endpoints.py   Core Audio: device list, default device
+    multiblu/engine.py      loopback capture, ring buffers, drift, alignment, volume, fan-out
     multiblu/app.py         the window
     tools/make_icon.py      regenerates assets/multiblu.ico
     tests/test_fanout.py    offline checks, no hardware needed
@@ -142,6 +144,7 @@ python -m PyInstaller --noconfirm --onefile --windowed --name "Multi-Blu" --icon
 | One device is behind the other | Drag its **delay** slider — see [Getting them in sync](#getting-them-in-sync). |
 | A second Bluetooth headset won't connect | Your adapter only supports one audio link. Use a USB Bluetooth dongle for the second pair. |
 | No sound on an extra device | Check its volume slider in the app, and its volume in Windows. |
+| Too quiet with the slider at 100% | The slider only turns a device down from its Windows level. Raise that device's volume in Windows sound settings. |
 
 ## Licence
 

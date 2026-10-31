@@ -64,6 +64,32 @@ check("gain applies per listener only",
       np.allclose(a.pull(BLOCK), src, atol=1e-6)
       and np.allclose(b.pull(BLOCK), src * 0.25, atol=1e-6))
 
+eng2.set_volume("quiet", 0.5)
+eng2.set_volume("ghost", 0.5)                          # not playing yet: just remembered
+check("the slider moves its own listener only, on a loudness curve",
+      a.gain == 1.0 and b.gain == 0.25 and eng2.volumes["ghost"] == 0.5)
+
+flat = np.full((BLOCK, 2), 0.5, dtype=np.float32)
+glide = make("glide")
+for level in (1.0, 0.0):
+    glide.ring.write(flat)
+    eng2._listeners["glide"] = glide
+    eng2.set_volume("glide", level)
+    out = glide.pull(BLOCK)
+check("a slider move glides instead of jumping",
+      abs(float(out[0, 0]) - 0.5) < 0.01 and abs(float(out[-1, 0])) < 1e-6
+      and np.abs(np.diff(out[:, 0])).max() < 0.01)
+glide.ring.write(flat)
+check("at zero the listener is silent", not glide.pull(BLOCK).any())
+
+eng2b = Engine(); eng2b.src_channels = 2
+back = make("back")
+back.stream = FakeStream(0.05)
+eng2b.volumes = {"back": 0.5}
+eng2b._listeners = {"back": back}
+eng2b._align_listeners()
+check("a remembered volume is back in force after a restart", back.gain == 0.25)
+
 print("\n--- format adaptation ---", flush=True)
 mono = _remap_channels(src, 1)
 check("stereo folds down to a mono device",

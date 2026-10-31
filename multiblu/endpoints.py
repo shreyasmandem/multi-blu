@@ -135,36 +135,6 @@ def _volume_iface(device_id: str):
     )
 
 
-_volume_cache: dict = {}
-
-
-def _cached_volume(device_id: str):
-    """Endpoint volume interfaces are reused; activating one per slider drag is slow."""
-    iface = _volume_cache.get(device_id)
-    if iface is None:
-        iface = _volume_cache[device_id] = _volume_iface(device_id)
-    return iface
-
-
-def get_volume(device_id: str) -> float | None:
-    try:
-        return float(_cached_volume(device_id).GetMasterVolumeLevelScalar())
-    except Exception:
-        _volume_cache.pop(device_id, None)
-        return None
-
-
-def set_volume(device_id: str, scalar: float) -> bool:
-    try:
-        _cached_volume(device_id).SetMasterVolumeLevelScalar(
-            max(0.0, min(1.0, scalar)), None
-        )
-        return True
-    except Exception:
-        _volume_cache.pop(device_id, None)
-        return False
-
-
 def get_mute(device_id: str) -> bool | None:
     try:
         return bool(_volume_iface(device_id).GetMute())
